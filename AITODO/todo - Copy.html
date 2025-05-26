@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>AI To-Do List</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .dark-mode {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+        }
+        
+        h1 {
+            text-align: center;
+        }
+        
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        input,
+        select,
+        button {
+            padding: 10px;
+            margin: 5px;
+        }
+        
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        li {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e0ffe0;
+            border-radius: 6px;
+        }
+        
+        li.completed {
+            text-decoration: line-through;
+            color: gray;
+        }
+        
+        .nav-link {
+            margin-top: 20px;
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+        }
+        
+        .nav-link:hover {
+            background-color: #45a049;
+        }
+        
+        #logoutBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 9999;
+        }
+    </style>
+</head>
+
+<body>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <div class="top-bar">
+        <h1>🧠 AI To-Do List</h1>
+        <button onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
+    </div>
+
+    <input type="text" id="taskInput" placeholder="Enter a task..." />
+    <input type="date" id="taskDate" />
+    <select id="taskCategory">
+    <option value="General">General</option>
+    <option value="Health">Health</option>
+    <option value="Work">Work</option>
+    <option value="Personal">Personal</option>
+  </select>
+    <select id="taskRecurrence">
+    <option value="none">No Repeat</option>
+    <option value="daily">Repeat Daily</option>
+    <option value="weekly">Repeat Weekly</option>
+    <option value="monthly">Repeat Monthly</option>
+  </select>
+    <button onclick="addTask()">➕ Add Task</button>
+    <button onclick="voiceInput()">🎤 Voice</button>
+    <button onclick="suggestTask()">💡 Suggest</button>
+    <button onclick="exportTasks()">📤 Export Tasks</button>
+    <input type="file" id="importFile" onchange="importTasks()" />
+
+    <ul id="taskList"></ul>
+
+    <hr />
+    <h3 id="summaryTotal"></h3>
+    <h4 id="summaryCompleted"></h4>
+    <ul id="completedList"></ul>
+    <h4 id="summaryIncomplete"></h4>
+    <ul id="incompleteList"></ul>
+
+    <hr />
+    <h3>🔥 Habit Streaks</h3>
+    <ul id="habitStreakList"></ul>
+
+    <a href="dashboard.html" class="nav-link">🔙 Back to Dashboard</a>
+
+    <script>
+        if (localStorage.getItem('loggedIn') !== 'true') {
+            alert("⚠️ You must log in first!");
+            window.location.href = 'login.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('currentUser');
+            alert("You have been logged out.");
+            window.location.href = 'login.html';
+        }
+
+        const user = localStorage.getItem("currentUser") || "default";
+
+        function getStoredTasks() {
+            return JSON.parse(localStorage.getItem(`tasks_${user}`)) || [];
+        }
+
+        function saveTasks(tasks) {
+            localStorage.setItem(`tasks_${user}`, JSON.stringify(tasks));
+        }
+
+        function addTask() {
+            const taskText = document.getElementById('taskInput').value.trim();
+            const taskDate = document.getElementById('taskDate').value;
+            const taskCategory = document.getElementById('taskCategory').value;
+            const taskRecurrence = document.getElementById('taskRecurrence').value;
+
+            if (!taskText) return alert("Task text cannot be empty!");
+
+            const now = new Date();
+            const task = {
+                text: taskText,
+                dueDate: taskDate || null,
+                created: now.toISOString(),
+                category: taskCategory || "General",
+                notified: false,
+                completed: false,
+                recurrence: taskRecurrence || "none",
+                habit: false
+            };
+
+            const tasks = getStoredTasks();
+            tasks.push(task);
+            saveTasks(tasks);
+
+            alert("✅ Task added!");
+            document.getElementById('taskInput').value = '';
+            document.getElementById('taskDate').value = '';
+            document.getElementById('taskRecurrence').value = 'none';
+
+            loadTasks();
+            updateTaskSummary();
+        }
+
+        function loadTasks() {
+            const tasks = getStoredTasks();
+            const list = document.getElementById("taskList");
+            list.innerHTML = '';
+
+            tasks.forEach((task, i) => {
+                const li = document.createElement("li");
+                li.className = task.completed ? "completed" : "";
+                li.innerHTML = `
+          <strong>${task.text}</strong> (${task.category}) <br />
+          Due: ${task.dueDate || "No date"} <br />
+          Recurs: ${task.recurrence || "None"} <br />
+          <button onclick="toggleComplete(${i})">${task.completed ? "Undo" : "Complete"}</button>
+          <button onclick="removeTask(${i})">Delete</button>
+        `;
+                list.appendChild(li);
+            });
+            updateTaskSummary();
+        }
+
+        function toggleComplete(index) {
+            const tasks = getStoredTasks();
+            const task = tasks[index];
+            task.completed = !task.completed;
+
+            if (task.completed && task.recurrence !== 'none') {
+                let nextDue = task.dueDate ? new Date(task.dueDate) : new Date();
+                switch (task.recurrence) {
+                    case 'daily':
+                        nextDue.setDate(nextDue.getDate() + 1);
+                        break;
+                    case 'weekly':
+                        nextDue.setDate(nextDue.getDate() + 7);
+                        break;
+                    case 'monthly':
+                        nextDue.setMonth(nextDue.getMonth() + 1);
+                        break;
+                }
+                const newTask = {...task
+                };
+                newTask.completed = false;
+                newTask.dueDate = nextDue.toISOString().slice(0, 10);
+                tasks.push(newTask);
+            }
+            saveTasks(tasks);
+            loadTasks();
+            updateTaskSummary();
+        }
+
+        function removeTask(index) {
+            const tasks = getStoredTasks();
+            tasks.splice(index, 1);
+            saveTasks(tasks);
+            loadTasks();
+            updateTaskSummary();
+        }
+
+        function updateTaskSummary() {
+            const tasks = getStoredTasks();
+            const total = tasks.length;
+            const completed = tasks.filter(t => t.completed).length;
+            const incomplete = total - completed;
+
+            document.getElementById("summaryTotal").textContent = `📋 Total Tasks: ${total}`;
+            document.getElementById("summaryCompleted").textContent = `✅ Completed: ${completed}`;
+            document.getElementById("summaryIncomplete").textContent = `❌ Incomplete: ${incomplete}`;
+        }
+
+        function exportTasks() {
+            const tasks = localStorage.getItem(`tasks_${user}`);
+            const blob = new Blob([tasks], {
+                type: "application/json"
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${user}_tasks.json`;
+            a.click();
+        }
+
+        function importTasks() {
+            const input = document.getElementById("importFile");
+            const file = input.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const importedTasks = JSON.parse(e.target.result);
+                    if (!Array.isArray(importedTasks)) throw new Error("Invalid format");
+                    localStorage.setItem(`tasks_${user}`, JSON.stringify(importedTasks));
+                    alert("✅ Tasks imported successfully!");
+                    loadTasks();
+                    updateTaskSummary();
+                } catch (err) {
+                    alert("❌ Import failed: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function voiceInput() {
+            alert("Voice input not implemented in this demo.");
+        }
+
+        function suggestTask() {
+            const ideas = ["Drink Water", "Call a friend", "Clean your desk", "Read for 10 mins"];
+            const random = ideas[Math.floor(Math.random() * ideas.length)];
+            document.getElementById("taskInput").value = random;
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle("dark-mode");
+            localStorage.setItem("darkMode", document.body.classList.contains("dark-mode") ? "true" : "false");
+        }
+
+        window.onload = () => {
+            if (localStorage.getItem("darkMode") === "true") {
+                document.body.classList.add("dark-mode");
+            }
+            loadTasks();
+            updateTaskSummary();
+        };
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>AI To-Do List</title>
+    <style>
+        body {
+            font-family: Arial;
+            text-align: center;
+            padding: 100px;
+            background: linear-gradient(-45deg, #ff9a9e, #fad0c4, #fbc2eb, #a1c4fd, #c2ffd8);
+            background-size: 400% 400%;
+            animation: soothingRainbow 20s ease infinite;
+        }
+        
+        @keyframes soothingRainbow {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        
+        .dark-mode {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+        }
+        
+        input,
+        select,
+        button {
+            padding: 10px;
+            margin: 5px;
+        }
+        
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        li {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #9fd5df;
+            border-radius: 6px;
+        }
+        
+        li.completed {
+            text-decoration: line-through;
+            color: gray;
+        }
+        
+        .nav-link {
+            margin-top: 20px;
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+        }
+        
+        .nav-link:hover {
+            background-color: #45a049;
+        }
+        
+        #logoutBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 9999;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+    <h1>🧠 AI To-Do List</h1>
+    <button onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button><br><br>
+
+    <input type="text" id="taskInput" placeholder="Enter a task..." />
+    <input type="date" id="taskDate" />
+    <input type="time" id="taskTime" />
+    <select id="taskCategory">
+        <option value="General">General</option>
+        <option value="Health">Health</option>
+        <option value="Work">Work</option>
+        <option value="Personal">Personal</option>
+    </select>
+    <select id="taskRecurrence">
+        <option value="none">No Repeat</option>
+        <option value="daily">Repeat Daily</option>
+        <option value="weekly">Repeat Weekly</option>
+        <option value="monthly">Repeat Monthly</option>
+    </select><br>
+
+    <button onclick="addTask()">➕ Add Task</button>
+    <button onclick="voiceInput()">🎤 Voice</button>
+    <button onclick="suggestTask()">💡 Suggest</button>
+    <button onclick="exportTasks()">📄 Export Tasks</button>
+    <input type="file" id="importFile" onchange="importTasks()" />
+
+    <div id="streakSummary"></div>
+    <ul id="taskList"></ul>
+
+    <hr />
+    <a href="dashboard.html" class="nav-link">🔙 Back to Dashboard</a>
+
+    <script>
+        if (localStorage.getItem('loggedIn') !== 'true') {
+            alert("⚠️ You must log in first!");
+            window.location.href = 'login.html';
+        }
+
+        const user = localStorage.getItem("currentUser") || "default";
+        let editIndex = -1; // Track which task is being edited
+
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('currentUser');
+            alert("You have been logged out.");
+            window.location.href = 'login.html';
+        }
+
+        function speak(text, lang = "en-IN") {
+            if ('speechSynthesis' in window) {
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.lang = lang;
+                msg.volume = 1;
+                msg.rate = 1;
+                msg.pitch = 1;
+                window.speechSynthesis.speak(msg);
+            }
+        }
+
+        function showTaskAddedNotification(taskText) {
+            const toast = document.createElement("div");
+            toast.className = "toast";
+            toast.textContent = `✅ Task "${taskText}" added!`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("🆕 New Task Added", {
+                    body: taskText,
+                    icon: "https://cdn-icons-png.flaticon.com/512/1828/1828817.png"
+                });
+            }
+        }
+
+        function getStoredTasks() {
+            return JSON.parse(localStorage.getItem(`tasks_${user}`)) || [];
+        }
+
+        function saveTasks(tasks) {
+            localStorage.setItem(`tasks_${user}`, JSON.stringify(tasks));
+        }
+
+        function addTask() {
+            const text = document.getElementById("taskInput").value.trim();
+            const dueDate = document.getElementById("taskDate").value;
+            const dueTime = document.getElementById("taskTime").value;
+            const category = document.getElementById("taskCategory").value;
+            const recurrence = document.getElementById("taskRecurrence").value;
+
+            if (!text || !dueDate || !dueTime) {
+                alert("Please enter task, date, and time.");
+                return;
+            }
+
+            const tasks = getStoredTasks();
+
+            if (editIndex > -1) {
+                tasks[editIndex] = {
+                    ...tasks[editIndex],
+                    text,
+                    dueDate,
+                    time: dueTime,
+                    category,
+                    recurrence
+                };
+                editIndex = -1;
+                speak("Task updated successfully.");
+            } else {
+                const task = {
+                    text,
+                    dueDate,
+                    time: dueTime,
+                    category,
+                    recurrence,
+                    completed: false,
+                    notified: false
+                };
+                tasks.push(task);
+                showTaskAddedNotification(text);
+                speak("Task added successfully.");
+            }
+
+            saveTasks(tasks);
+            document.getElementById("taskInput").value = '';
+            document.getElementById("taskDate").value = '';
+            document.getElementById("taskTime").value = '';
+            document.getElementById("taskCategory").value = 'General';
+            document.getElementById("taskRecurrence").value = 'none';
+
+            loadTasks();
+        }
+
+        function editTask(i) {
+            const tasks = getStoredTasks();
+            const task = tasks[i];
+            document.getElementById("taskInput").value = task.text;
+            document.getElementById("taskDate").value = task.dueDate;
+            document.getElementById("taskTime").value = task.time;
+            document.getElementById("taskCategory").value = task.category;
+            document.getElementById("taskRecurrence").value = task.recurrence;
+            editIndex = i;
+        }
+
+        function loadTasks() {
+            const list = document.getElementById("taskList");
+            const tasks = getStoredTasks();
+            const today = new Date().toISOString().slice(0, 10);
+            const completedToday = tasks.filter(task => task.completed && task.dueDate === today).length;
+            const totalToday = tasks.filter(task => task.dueDate === today).length;
+            document.getElementById("streakSummary").innerHTML = `✅ Today's Progress: ${completedToday} of ${totalToday} tasks completed.`;
+            list.innerHTML = '';
+            tasks.forEach((task, i) => {
+                const li = document.createElement("li");
+                li.className = task.completed ? "completed" : "";
+                li.innerHTML = `<strong>${task.text}</strong> (${task.category})<br>
+                Due: ${task.dueDate || "No date"} ${task.time || ""}<br>
+                Recurs: ${task.recurrence || "None"}<br>
+                <button onclick="toggleComplete(${i})">${task.completed ? "Undo" : "Complete"}</button>
+                <button onclick="editTask(${i})">Edit</button>
+                <button onclick="removeTask(${i})">Delete</button>`;
+                list.appendChild(li);
+            });
+        }
+
+        function toggleComplete(i) {
+            const tasks = getStoredTasks();
+            const task = tasks[i];
+            task.completed = !task.completed;
+
+            if (task.completed && task.recurrence !== 'none') {
+                const next = new Date(task.dueDate);
+                if (task.recurrence === 'daily') next.setDate(next.getDate() + 1);
+                if (task.recurrence === 'weekly') next.setDate(next.getDate() + 7);
+                if (task.recurrence === 'monthly') next.setMonth(next.getMonth() + 1);
+                tasks.push({...task,
+                    dueDate: next.toISOString().slice(0, 10),
+                    completed: false,
+                    notified: false
+                });
+            }
+
+            saveTasks(tasks);
+            loadTasks();
+        }
+
+        function removeTask(i) {
+            const tasks = getStoredTasks();
+            tasks.splice(i, 1);
+            saveTasks(tasks);
+            loadTasks();
+        }
+
+        function exportTasks() {
+            const blob = new Blob([JSON.stringify(getStoredTasks())], {
+                type: 'application/json'
+            });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${user}_tasks.json`;
+            a.click();
+        }
+
+        function importTasks() {
+            const file = document.getElementById("importFile").files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (!Array.isArray(imported)) throw new Error("Invalid format");
+                    saveTasks(imported);
+                    loadTasks();
+                    speak("Tasks imported successfully");
+                } catch (err) {
+                    alert("Import failed: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function voiceInput() {
+            if (!('webkitSpeechRecognition' in window)) return alert("Speech recognition not supported");
+            const rec = new webkitSpeechRecognition();
+            rec.lang = "en-IN";
+            rec.onresult = function(e) {
+                document.getElementById("taskInput").value = e.results[0][0].transcript;
+            };
+            rec.start();
+        }
+
+        function suggestTask() {
+            const suggestions = ["Drink Water", "Stretch for 5 mins", "Call your friend", "Review your goals"];
+            document.getElementById("taskInput").value = suggestions[Math.floor(Math.random() * suggestions.length)];
+        }
+
+        function showDueTaskPopup(taskText) {
+            const now = new Date().toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            const popup = document.createElement("div");
+            popup.innerHTML = `<strong>⏰ Task Due:</strong><br>${taskText}<br><em>${now}</em>`;
+            popup.style.position = "fixed";
+            popup.style.bottom = "20px";
+            popup.style.left = "50%";
+            popup.style.transform = "translateX(-50%)";
+            popup.style.background = "#ff9800";
+            popup.style.color = "white";
+            popup.style.padding = "12px 24px";
+            popup.style.borderRadius = "8px";
+            popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+            popup.style.zIndex = 10000;
+            popup.style.fontSize = "16px";
+            popup.style.lineHeight = "1.5em";
+            document.body.appendChild(popup);
+            speak(`Task due now: ${taskText}`);
+            setTimeout(() => popup.remove(), 6000);
+        }
+
+        function checkDueTasksAndRemind() {
+            const tasks = getStoredTasks();
+            const now = new Date();
+            const today = now.toISOString().slice(0, 10);
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+            tasks.forEach(task => {
+                if (!task.completed && task.dueDate === today) {
+                    const [taskHour, taskMin] = (task.time || "00:00").split(":").map(Number);
+                    const taskMinutes = taskHour * 60 + taskMin;
+                    const diff = taskMinutes - currentMinutes;
+
+                    if (diff === 5 && !task.earlyNotified) {
+                        speak(`Upcoming: Your task '${task.text}' is due in 5 minutes.`);
+                        task.earlyNotified = true;
+                    } else if (diff === 0 && !task.notified) {
+                        speak(`Reminder: You have a task due now. ${task.text}`);
+                        showDueTaskPopup(task.text);
+                        task.notified = true;
+                    }
+                }
+            });
+
+            saveTasks(tasks);
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle("dark-mode");
+            localStorage.setItem("darkMode", document.body.classList.contains("dark-mode") ? "true" : "false");
+        }
+
+        window.onload = () => {
+            if (localStorage.getItem("darkMode") === "true") document.body.classList.add("dark-mode");
+            loadTasks();
+            setInterval(checkDueTasksAndRemind, 60000);
+            if ("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+        };
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js').then();
+
+        };
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Task Calendar View</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .dark-mode {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+        }
+        
+        #calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            max-width: 600px;
+            margin: 20px auto;
+        }
+        
+        .day {
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 80px;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .dark-mode .day {
+            background: #333;
+            border-color: #555;
+        }
+        
+        .day.today {
+            border: 2px solid #4CAF50;
+        }
+        
+        .task-indicator {
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            right: 5px;
+        }
+        
+        #taskList {
+            max-width: 600px;
+            margin: 20px auto;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .dark-mode #taskList {
+            background: #222;
+        }
+        
+        #taskList ul {
+            padding-left: 20px;
+        }
+        
+        button {
+            margin: 10px auto;
+            display: block;
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        #logoutBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 9999;
+        }
+    </style>
+</head>
+
+<body>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <h1 style="text-align:center;">📅 Task Calendar View</h1>
+    <div id="calendar"></div>
+    <div id="taskList"><strong>Select a date to view tasks</strong></div>
+    <button onclick="goToDashboard()">🔙 Back to Dashboard</button>
+
+    <script>
+        if (localStorage.getItem('loggedIn') !== 'true') {
+            alert("⚠️ You must log in first!");
+            window.location.href = 'login.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('currentUser');
+            alert("You have been logged out.");
+            window.location.href = 'login.html';
+        }
+
+        if (localStorage.getItem("darkMode") === "true") {
+            document.body.classList.add("dark-mode");
+        }
+
+        const calendar = document.getElementById("calendar");
+        const taskListDiv = document.getElementById("taskList");
+        const user = localStorage.getItem("currentUser") || "default";
+
+        function getTasks() {
+            return JSON.parse(localStorage.getItem(`tasks_${user}`)) || [];
+        }
+
+        function buildCalendar(year, month) {
+            calendar.innerHTML = '';
+            const firstDay = new Date(year, month, 1);
+            const startDay = firstDay.getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+
+            for (let i = 0; i < startDay; i++) {
+                const emptyCell = document.createElement("div");
+                calendar.appendChild(emptyCell);
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const cell = document.createElement("div");
+                cell.className = "day";
+                if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    cell.classList.add("today");
+                }
+                cell.textContent = day;
+
+                const tasks = getTasks();
+                const dayStr = `${year}-${(month+1).toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`;
+                const tasksForDay = tasks.filter(t => t.dueDate && t.dueDate.startsWith(dayStr));
+
+                if (tasksForDay.length > 0) {
+                    const indicator = document.createElement("div");
+                    indicator.className = "task-indicator";
+                    cell.appendChild(indicator);
+                }
+
+                cell.addEventListener("click", () => showTasksForDay(dayStr));
+                calendar.appendChild(cell);
+            }
+        }
+
+        function showTasksForDay(dateStr) {
+            const tasks = getTasks();
+            const tasksForDay = tasks.filter(t => t.dueDate && t.dueDate.startsWith(dateStr));
+
+            if (tasksForDay.length === 0) {
+                taskListDiv.innerHTML = `<strong>No tasks due on ${dateStr}</strong>`;
+                return;
+            }
+
+            let html = `<h3>Tasks for ${dateStr}</h3><ul>`;
+            tasksForDay.forEach(t => {
+                html += `<li><strong>${t.text}</strong> ${t.completed ? '✅' : '⏳'}</li>`;
+            });
+            html += '</ul>';
+            taskListDiv.innerHTML = html;
+        }
+
+        function goToDashboard() {
+            window.location.href = "dashboard.html";
+        }
+
+        const now = new Date();
+        buildCalendar(now.getFullYear(), now.getMonth());
+    </script>
+</body>
+
+</html>

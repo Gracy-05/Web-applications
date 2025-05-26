@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Dashboard | AI To-Do</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            color: #333;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .dark-mode {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+        }
+        
+        .header {
+            background: #4CAF50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .profile-box {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px auto;
+        }
+        
+        .avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #4CAF50;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 18px;
+            width: 250px;
+            text-align: center;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+        }
+        
+        #taskInsights {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #e6ffe6;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        #logoutBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 9999;
+        }
+    </style>
+</head>
+
+<body>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <div class="header">
+        <h1>AI TO-DO DASHBOARD</h1>
+    </div>
+
+    <div class="profile-box">
+        <img id="avatar" class="avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Avatar" />
+        <h3 id="welcomeName">Welcome, User!</h3>
+    </div>
+
+    <div id="taskInsights">
+        <h3>🤖 Task Insights</h3>
+        <p id="insightsText">Loading insights...</p>
+    </div>
+
+    <div class="container">
+        <a href="todo.html" class="btn">📝 To-Do List</a>
+        <a href="summary.html" class="btn">📊 Task Summary</a>
+        <a href="settings.html" class="btn">⚙️ Settings</a>
+        <a href="profile.html" class="btn">👤 Profile Settings</a>
+        <a href="calendar.html" class="btn">📅 Calendar View</a>
+        <a href="pomodoro.html" class="btn">🍅 Pomodoro Timer</a>
+        <button onclick="toggleDarkMode()" class="btn">🌙 Toggle Dark Mode</button>
+    </div>
+
+    <script>
+        if (localStorage.getItem('loggedIn') !== 'true') {
+            alert("⚠️ You must log in first!");
+            window.location.href = 'login.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('currentUser');
+            alert("You have been logged out.");
+            window.location.href = 'login.html';
+        }
+
+        const user = localStorage.getItem("currentUser") || "guest";
+        const profile = JSON.parse(localStorage.getItem(`profile_${user}`)) || {};
+
+        document.getElementById("welcomeName").textContent = `Welcome, ${profile.name || user}`;
+        document.getElementById("avatar").src = profile.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+
+        function toggleDarkMode() {
+            document.body.classList.toggle("dark-mode");
+            const isDark = document.body.classList.contains("dark-mode");
+            localStorage.setItem("darkMode", isDark ? "true" : "false");
+            if (profile) {
+                profile.theme = isDark ? "dark" : "light";
+                localStorage.setItem(`profile_${user}`, JSON.stringify(profile));
+            }
+        }
+
+        function applyTheme(theme) {
+            if (theme === "dark") document.body.classList.add("dark-mode");
+            else if (theme === "light") document.body.classList.remove("dark-mode");
+            else {
+                const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                prefersDark ? document.body.classList.add("dark-mode") : document.body.classList.remove("dark-mode");
+            }
+        }
+
+        function generateTaskInsights() {
+            const tasks = JSON.parse(localStorage.getItem(`tasks_${user}`)) || [];
+            const now = new Date();
+            const oneWeekLater = new Date(now);
+            oneWeekLater.setDate(now.getDate() + 7);
+
+            let overdueCount = 0;
+            let upcomingCount = 0;
+            const categoryCounts = {};
+
+            tasks.forEach(task => {
+                if (!task.dueDate || task.completed) return;
+                const due = new Date(task.dueDate);
+                if (due < now) overdueCount++;
+                else if (due <= oneWeekLater) upcomingCount++;
+                const cat = task.category || "General";
+                categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+            });
+
+            const sortedCats = Object.entries(categoryCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat, count]) => `${cat} (${count})`)
+                .join(", ");
+
+            let summary = `You have ${overdueCount} overdue task${overdueCount !== 1 ? 's' : ''}. `;
+            summary += `You have ${upcomingCount} tasks due in the next 7 days. `;
+            if (sortedCats) summary += `Top categories: ${sortedCats}.`;
+
+            document.getElementById("insightsText").textContent = summary;
+        }
+
+        window.onload = () => {
+            applyTheme(profile.theme || "light");
+            generateTaskInsights();
+            if (localStorage.getItem("darkMode") === "true") {
+                document.body.classList.add("dark-mode");
+            }
+        };
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js')
+                .then();
+        }
+    </script>
+</body>
+
+</html>

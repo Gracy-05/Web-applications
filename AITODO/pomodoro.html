@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Pomodoro Timer</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 30px;
+            text-align: center;
+            background: #f0f0f0;
+            color: #333;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .dark-mode {
+            background: #1e1e1e;
+            color: #f0f0f0;
+        }
+        
+        #timer {
+            font-size: 72px;
+            margin: 40px 0;
+        }
+        
+        button {
+            font-size: 18px;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        #logoutBtn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 9999;
+        }
+        
+        #durationSelector {
+            margin-top: 30px;
+        }
+        
+        #durationSelector input {
+            width: 60px;
+            font-size: 16px;
+            padding: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <h1>🍅 Pomodoro Timer</h1>
+
+    <div id="durationSelector">
+        <label for="customDuration">Set Duration (minutes):</label>
+        <input type="number" id="customDuration" value="25" min="1" />
+    </div>
+
+    <div id="timer">25:00</div>
+
+    <button id="startBtn">▶ Start</button>
+    <button id="pauseBtn">⏸ Pause / Resume</button>
+    <button id="resetBtn">↻ Reset</button>
+
+    <br /><br />
+    <a href="dashboard.html">🔙 Back to Dashboard</a>
+
+    <script>
+        if (localStorage.getItem('loggedIn') !== 'true') {
+            alert("⚠️ You must log in first!");
+            window.location.href = 'login.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('currentUser');
+            alert("You have been logged out.");
+            window.location.href = 'login.html';
+        }
+
+        if (localStorage.getItem("darkMode") === "true") {
+            document.body.classList.add("dark-mode");
+        }
+
+        if ("Notification" in window) {
+            Notification.requestPermission();
+        }
+
+        let timer;
+        let secondsLeft;
+        let running = false;
+
+        const timerEl = document.getElementById("timer");
+        const startBtn = document.getElementById("startBtn");
+        const pauseBtn = document.getElementById("pauseBtn");
+        const resetBtn = document.getElementById("resetBtn");
+        const durationInput = document.getElementById("customDuration");
+
+        const alertSound = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+
+        function updateDisplay() {
+            const minutes = Math.floor(secondsLeft / 60).toString().padStart(2, "0");
+            const seconds = (secondsLeft % 60).toString().padStart(2, "0");
+            timerEl.textContent = `${minutes}:${seconds}`;
+        }
+
+        function notifyCompletion() {
+            if (Notification.permission === "granted") {
+                new Notification("⏰ Pomodoro Complete!", {
+                    body: "Great job! Time for a break.",
+                    icon: "https://cdn-icons-png.flaticon.com/512/2904/2904534.png"
+                });
+            }
+            alertSound.play();
+            showPopup();
+        }
+
+        function showPopup() {
+            const popup = document.createElement("div");
+            popup.textContent = "✅ Pomodoro Complete! Take a break.";
+            popup.style.position = "fixed";
+            popup.style.bottom = "20px";
+            popup.style.left = "50%";
+            popup.style.transform = "translateX(-50%)";
+            popup.style.background = "#4CAF50";
+            popup.style.color = "white";
+            popup.style.padding = "12px 24px";
+            popup.style.borderRadius = "8px";
+            popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+            popup.style.zIndex = 10000;
+
+            document.body.appendChild(popup);
+
+            setTimeout(() => {
+                popup.remove();
+            }, 5000);
+        }
+
+        function startTimer(fromStart = true) {
+            if (fromStart) {
+                const customMinutes = parseInt(durationInput.value);
+                if (!customMinutes || customMinutes <= 0) return alert("Please enter a valid number of minutes");
+                secondsLeft = customMinutes * 60;
+            }
+
+            updateDisplay();
+            clearInterval(timer);
+            timer = setInterval(() => {
+                if (secondsLeft > 0) {
+                    secondsLeft--;
+                    updateDisplay();
+                } else {
+                    clearInterval(timer);
+                    running = false;
+                    startBtn.disabled = false;
+                    pauseBtn.textContent = "⏸ Pause / Resume";
+                    alert("✅ Pomodoro complete!");
+                    notifyCompletion();
+                }
+            }, 1000);
+
+            running = true;
+            startBtn.disabled = true;
+            pauseBtn.textContent = "⏸ Pause";
+        }
+
+        function pauseOrResumeTimer() {
+            if (running) {
+                clearInterval(timer);
+                running = false;
+                pauseBtn.textContent = "▶ Resume";
+            } else {
+                startTimer(false);
+                pauseBtn.textContent = "⏸ Pause";
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timer);
+            running = false;
+            secondsLeft = parseInt(durationInput.value) * 60;
+            updateDisplay();
+            startBtn.disabled = false;
+            pauseBtn.textContent = "⏸ Pause / Resume";
+        }
+
+        startBtn.onclick = () => startTimer(true);
+        pauseBtn.onclick = pauseOrResumeTimer;
+        resetBtn.onclick = resetTimer;
+
+        // Set initial value
+        secondsLeft = parseInt(durationInput.value) * 60;
+        updateDisplay();
+    </script>
+</body>
+
+</html>
